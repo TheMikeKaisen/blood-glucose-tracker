@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const env = require('./env');
+
+// Force DATE column (OID 1082) to parse as raw 'YYYY-MM-DD' string to prevent timezone day-shift
+types.setTypeParser(1082, (val) => val);
 
 let pool;
 let isInMemory = false;
@@ -27,6 +30,18 @@ if (env.USE_IN_MEMORY_DB) {
   const { newDb } = require('pg-mem');
   memDbInstance = newDb({ noAstCoverageCheck: true });
   
+  // Register plpgsql script language handler for DO $$ blocks
+  memDbInstance.registerLanguage('plpgsql', ({ code }) => () => {
+    const match = code.match(/CREATE\s+TYPE\s+([a-zA-Z0-9_]+)\s+AS\s+ENUM\s*\(([^)]+)\)/i);
+    if (match) {
+      try {
+        memDbInstance.public.none(match[0] + ';');
+      } catch (e) {
+        // Ignore duplicate type creation errors
+      }
+    }
+  });
+
   // Register common Postgres functions if needed
   memDbInstance.public.registerFunction({
     name: 'current_timestamp',
@@ -59,6 +74,11 @@ if (env.USE_IN_MEMORY_DB) {
 async function resetTestDb() {
   if (isInMemory || env.NODE_ENV === 'test') {
     await initSchema();
+    try {
+      await pool.query('DELETE FROM readings;');
+    } catch (e) {
+      // Table might not exist yet
+    }
     await pool.query('DELETE FROM refresh_tokens;');
     await pool.query('DELETE FROM users;');
   }

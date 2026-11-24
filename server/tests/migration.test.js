@@ -37,4 +37,21 @@ describe('Database Migration', () => {
     expect(columns).toContain('expires_at');
     expect(columns).toContain('revoked_at');
   });
+
+  it('creates readings table with required columns and constraints', async () => {
+    await runMigrations();
+    const res = await query(
+      `SELECT column_name 
+       FROM information_schema.columns 
+       WHERE table_name = 'readings';`
+    );
+    const cols = res.rows.map((r) => r.column_name);
+    expect(cols).toContain('id');
+    expect(cols).toContain('user_id');
+    expect(cols).toContain('date');
+    expect(cols).toContain('slot');
+    expect(cols).toContain('value');
+    expect(cols).toContain('created_at');
+    expect(cols).toContain('updated_at');
+  });
 });

@@ -6,7 +6,6 @@ const server = app.listen(env.PORT, async () => {
   console.log(`Sweety REST API running on port ${env.PORT} in ${env.NODE_ENV} mode`);
   console.log(`CORS allowed origin: ${env.CLIENT_URL}`);
   
-  // Verify database connection on startup
   try {
     await pool.query('SELECT 1;');
     console.log('Connected to PostgreSQL successfully.');

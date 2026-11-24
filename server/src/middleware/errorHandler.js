@@ -38,6 +38,13 @@ function errorHandler(err, req, res, next) {
     });
   }
 
+  // 4. PostgreSQL Data Syntax / Range Violation (e.g., 22P02 invalid syntax, 22008 datetime overflow, 22003 bigint overflow)
+  if (err.code === '22P02' || err.code === '22008' || err.code === '22003') {
+    return res.status(400).json({
+      error: 'Invalid input syntax or value out of range',
+    });
+  }
+
   // Log internal error server-side for diagnostics (unless in quiet test mode)
   if (env.NODE_ENV !== 'test') {
     console.error('Unhandled internal error:', err);

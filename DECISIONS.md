@@ -140,3 +140,69 @@ This document records the architectural and technical decisions made for the Swe
 - **Consequences:**
   - Index-only scans for active session operations.
   - Constant-bounded table size without requiring external cron daemons.
+
+---
+
+## ADR-013: Indian Standard Time (`Asia/Kolkata`) Date Anchor
+
+- **Status:** Accepted
+- **Context:** `Assignment.md` mandates that glucose readings cannot be entered for dates in the future. In cloud environments where server clocks run in UTC, a patient entering readings late in the evening (e.g. 11:30 PM IST / 18:00 UTC) or early morning (e.g. 1:00 AM IST / 19:30 UTC previous day) would face date mismatch errors or invalid future rejections.
+- **Decision:** Anchor all calendar date boundary calculations to Indian Standard Time (`Asia/Kolkata`, UTC+5:30) using `Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' })`.
+- **Consequences:**
+  - Guarantees predictable calendar boundaries across local development, Docker, and UTC-hosted cloud containers.
+  - Correctly evaluates today vs. tomorrow regardless of server host timezone.
+
+---
+
+## ADR-014: Multi-Tenant IDOR Prevention via Strict Parameterized Scoping
+
+- **Status:** Accepted
+- **Context:** In multi-tenant healthcare software, Insecure Direct Object Reference (IDOR) vulnerabilities allow malicious users to view, tamper with, or delete other patients' medical records by guessing or altering numerical IDs in URL paths.
+- **Decision:** Every read, update, and delete SQL operation on the `readings` table includes `WHERE user_id = $userId` derived exclusively from the verified JWT access cookie. Unmatched requests return `404 Not Found` rather than `403 Forbidden` to prevent information leakage regarding the existence of records belonging to other tenants.
+- **Consequences:**
+  - Zero leakage of foreign health records.
+  - Complete mitigation of IDOR attacks.
+
+---
+
+## ADR-015: Self-Exclusion on Reading Updates to Prevent False Conflict Rejections
+
+- **Status:** Accepted
+- **Context:** When a patient logs all 4 daily readings and subsequently updates a reading on that date (e.g., correcting an error in value or slot via `PUT` or `PATCH`), naive validation checks for daily count (`COUNT >= 4`) or existing slot would flag a false conflict with the reading itself.
+- **Decision:** All update queries explicitly exclude the record being edited (`AND id != $id`), ensuring idempotent updates and error corrections on fully populated days succeed seamlessly.
+- **Consequences:**
+  - Eliminates frustrating false rejections for patients correcting logs.
+  - Preserves integrity of the 4 readings/day maximum and single reading/slot constraints.
+
+---
+
+## ADR-016: Raw String `DATE` Column Parsing (Type OID 1082)
+
+- **Status:** Accepted
+- **Context:** Node-postgres (`pg`) by default parses PostgreSQL `DATE` types into JavaScript `Date` objects instantiated at local midnight. When serialized via JSON or `.toISOString()`, the timestamp undergoes timezone conversion, frequently shifting the date backwards by 1 day (e.g. `2026-10-15` turning into `2026-10-14T18:30:00.000Z`).
+- **Decision:** Configure `pg.types.setTypeParser(1082, (val) => val)` globally so node-postgres returns pure ISO date strings (`YYYY-MM-DD`).
+- **Consequences:**
+  - Completely eliminates 1-day date shift anomalies.
+  - Preserves date immutability from database to client without manual timezone conversions.
+
+---
+
+## ADR-017: Explicit Route Parameter Numerical and 64-bit Integer Bounds Validation
+
+- **Status:** Accepted
+- **Context:** Route parameters such as `/api/readings/:id` are passed into SQL queries parameterized against PostgreSQL `BIGINT` columns. If an arbitrary non-numeric string (`/api/readings/abc`), negative integer, or integer exceeding 64-bit signed bounds is provided, PostgreSQL throws `22P02` (invalid input syntax for bigint) or `22003` (numeric value out of range), crashing request execution with unhandled 500 errors and leaking SQL statements.
+- **Decision:** Enforce `isValidId(id)` validation before executing database queries across all ID-dependent controllers (`getReadingById`, `updateReading`, `patchReading`, `deleteReading`). If invalid, return `404 Not Found: { "error": "Reading not found" }` immediately. In addition, `errorHandler.js` defensively maps `22P02`, `22008`, and `22003` error codes to HTTP 400.
+- **Consequences:**
+  - Prevents 500 crashes and information leakage from invalid route params.
+  - Aligns with REST convention: non-existent/invalid resource IDs cleanly return 404.
+
+---
+
+## ADR-018: Query Calendar Date Preprocessing & Whitespace Normalization
+
+- **Status:** Accepted
+- **Context:** Query parameters in `GET /api/readings?date=...` could accept invalid calendar strings matching regex patterns (e.g. `2026-02-31`), which triggered PostgreSQL datetime overflow errors (`22008`). Additionally, empty string query parameters (`?date=&page=&limit=`) from cleared frontend inputs caused 422 schema rejections.
+- **Decision:** Use Zod `.preprocess()` to convert empty query strings to `undefined` for fallback to pagination defaults, and enforce `isValidDateString` calendar validation. In `glucoseValueSchema`, treat whitespace-only values (`"   "`) as missing values returning `"Please enter a glucose value."`.
+- **Consequences:**
+  - Robust handling of cleared form inputs and invalid calendar dates.
+  - Perfect verbatim parity with clinical validation rules in `Assignment.md`.

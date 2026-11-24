@@ -17,7 +17,8 @@ Sweety is a clinical blood glucose tracking application. Health data is sensitiv
 | **Refresh Token Theft** | Long-lived unauthorized session access | Refresh Token Rotation on every exchange; tokens stored solely as SHA-256 hashes; automatic Reuse Detection revoking all user sessions upon breach |
 | **Cross-Site Request Forgery (CSRF)** | Unauthorized mutations via browser ambient credentials | Double Submit Cookie pattern; state-mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) require matching `X-CSRF-Token` header |
 | **SQL Injection** | Database takeover / data leakage | 100% parameterized SQL queries (`$1, $2, ...`) via `pg`; zero dynamic string concatenation |
-| **Insecure Direct Object Reference (IDOR)** | User viewing or editing another patient's readings | Hard multi-tenant isolation enforced in database queries (`WHERE user_id = $1`) on all read/write operations |
+| **Insecure Direct Object Reference (IDOR)** | User viewing or editing another patient's readings | Hard multi-tenant isolation enforced in database queries (`WHERE user_id = $1`) on all read/write operations; returns 404 on mismatched user IDs |
+| **Race Conditions / Duplicate Submissions** | Bypassing slot or daily count limits via parallel requests | PostgreSQL table constraint `UNIQUE(user_id, date, slot)` with controller error trapping (`code === '23505'`) |
 | **Information Disclosure** | Attackers exploiting stack traces or schema info | Centralized error handler suppressing stack traces and raw SQL errors in production; standardized error envelopes |
 | **Denial of Service (DoS)** | Exhaustion of server resources | Payload size limits (`10kb`), rate limiting, connection pooling with bounded limits |
 
@@ -139,3 +140,43 @@ Sweety employs the **Double Submit Cookie pattern** combined with custom header 
 - [ ] CORS allowlist verified; credentials allowed only for trusted origin.
 - [ ] Error messages do not leak internal system details.
 - [ ] Zod boundary validation covers all inputs.
+
+---
+
+## 8. Phase 2 Security Hardening: Clinical Readings & Multi-Tenancy
+
+### 8.1 Multi-Tenant IDOR Mitigation
+- All reading operations (`GET /:id`, `PUT /:id`, `PATCH /:id`, `DELETE /:id`) verify ownership via `WHERE id = $1 AND user_id = $2`.
+- When an ID is requested that does not belong to the authenticated user, the server returns `404 Not Found` (never `403 Forbidden`). This prevents malicious users from enumerating reading IDs or determining whether an ID exists.
+- In `GET /api/readings` listing queries, results are scoped strictly to `WHERE user_id = $1`, guaranteeing zero cross-tenant reading leakage.
+
+### 8.2 Concurrency & Race Condition Defense
+- While application-level validation checks `COUNT(*) >= 4` and existing slot queries, concurrent requests sent in parallel could theoretically race past application checks.
+- A hard PostgreSQL unique constraint `CONSTRAINT uq_user_date_slot UNIQUE (user_id, date, slot)` guarantees that no two readings for the same slot on the same date can ever be inserted.
+- The controller traps PostgreSQL error code `23505` (`unique_violation`) and transforms it into HTTP `409 Conflict: "You already have an {Slot Name} reading for this date."`, maintaining seamless error parity under heavy concurrency.
+
+### 8.3 Clinical Boundary Validation
+- All inputs pass through Zod schemas before reaching the database:
+  - Glucose value: Integer check, 40 mg/dL ≤ value ≤ 600 mg/dL. Whitespace-only values cleanly return `"Please enter a glucose value."`.
+  - Meal slots: Enumeration strictly restricted to clinical values (`morning_fasting`, `after_breakfast`, `after_lunch`, `after_dinner`).
+  - Date boundary: Evaluated against Indian Standard Time (`Asia/Kolkata`) to prevent future-dated entries. Query date strings validated against calendar leap year rules (`isValidDateString`).
+
+### 8.4 Numerical Parameter Validation & SQL Execution Hardening
+- Route parameters (`/api/readings/:id`) are strictly validated via `isValidId(id)` prior to SQL execution, verifying that `:id` is a positive integer string within PostgreSQL signed 64-bit `BIGINT` range (`1 ≤ id ≤ 9223372036854775807`).
+- Non-numeric strings, negative IDs, zero, and out-of-range integers immediately return `404 Not Found`, eliminating database syntax errors (`22P02`), range errors (`22003`), and unhandled 500 exceptions.
+- `errorHandler.js` defensively captures `22P02`, `22008`, and `22003` error codes, mapping them to HTTP 400 to prevent internal database queries or stack traces from ever leaking.
+
+---
+
+## 9. Modular Phase 1 Security Deep Dives
+
+For exhaustive cryptographic analysis, attack surface breakdowns, code walkthroughs, and interview Q&As, refer to the following documentation files:
+- [working/README.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/README.md) – Phase 1 Master Security & Architecture Overview
+- [working/phase1_auth.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_auth.md) – Authentication Lifecycle, Timing Attacks & Argon2id Hashing
+- [working/phase1_tokens_and_rotation.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_tokens_and_rotation.md) – Dual-Token Architecture, Atomic Rotation & Reuse Compromise Detection
+- [working/phase1_csrf_and_cookies.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_csrf_and_cookies.md) – Cookie Configuration, RFC 6265bis & Double Submit CSRF Defense
+- [working/phase1_rate_limit.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_rate_limit.md) – Brute-Force Rate Limiting & Proxy IP Spoofing Defense
+- [working/phase1_security_libraries.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_security_libraries.md) – Core Security Libraries & HTTP Hardening (`helmet`, `cors`, `zod`, etc.)
+- [working/phase1_database_and_models.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_database_and_models.md) – Database Security, Identity Columns & Multi-Tenant Isolation
+- [working/phase1_error_handling_and_validation.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_error_handling_and_validation.md) – Boundary Validation & Information Disclosure Prevention
+- [working/phase1_interview_qa.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_interview_qa.md) – Master Senior Backend & Security Interview Preparation

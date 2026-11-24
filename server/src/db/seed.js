@@ -1,5 +1,6 @@
 const { query, pool } = require('../config/db');
 const { hashPassword } = require('../utils/security');
+const { getTodayInIST } = require('../utils/date');
 
 /**
  * Sweety Database Seeder
@@ -46,17 +47,16 @@ async function seedDatabase() {
     // Clear previous seed readings for this demo user
     await query('DELETE FROM readings WHERE user_id = $1;', [userId]);
 
-    // Generate 30 days of data ending today
-    const now = new Date();
+    // Generate 30 days of data ending today in IST
+    const todayStr = getTodayInIST();
+    const [tYear, tMonth, tDay] = todayStr.split('-').map(Number);
+    const anchorDate = new Date(Date.UTC(tYear, tMonth - 1, tDay));
     const readingsToInsert = [];
 
     for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - dayOffset);
+      const d = new Date(anchorDate);
+      d.setUTCDate(d.getUTCDate() - dayOffset);
       const dateStr = d.toISOString().split('T')[0];
-
-      // Phase 1: Days 29..15 (Uncontrolled hyperglycemia)
-      // Phase 2: Days 14..0 (Post-consultation glycemic stabilization)
       const isEarly = dayOffset >= 15;
 
       const fastingVal = isEarly ? Math.floor(155 + Math.random() * 45) : Math.floor(88 + Math.random() * 20);
