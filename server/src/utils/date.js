@@ -63,9 +63,49 @@ function formatDateOnly(d) {
   return String(d);
 }
 
+/**
+ * Calculates start and end calendar dates for reports:
+ * - 'daily': dateFrom = dateTo = dateStr
+ * - 'month_to_date': dateFrom = 1st of month, dateTo = dateStr
+ * - 'monthly': whole previous month (e.g. 2026-10-15 -> 2026-09-01 to 2026-09-30)
+ *
+ * @param {'daily'|'month_to_date'|'monthly'} type
+ * @param {string} dateStr Calendar date in YYYY-MM-DD format
+ * @returns {{ dateFrom: string, dateTo: string }}
+ */
+function getReportDateRange(type, dateStr) {
+  const [year, month] = dateStr.split('-').map(Number);
+
+  if (type === 'daily') {
+    return { dateFrom: dateStr, dateTo: dateStr };
+  }
+
+  if (type === 'month_to_date') {
+    const formattedYear = String(year).padStart(4, '0');
+    const formattedMonth = String(month).padStart(2, '0');
+    return { dateFrom: `${formattedYear}-${formattedMonth}-01`, dateTo: dateStr };
+  }
+
+  if (type === 'monthly') {
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const daysInPrevMonth = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate();
+    const formattedYear = String(prevYear).padStart(4, '0');
+    const formattedMonth = String(prevMonth).padStart(2, '0');
+    const formattedDay = String(daysInPrevMonth).padStart(2, '0');
+    return {
+      dateFrom: `${formattedYear}-${formattedMonth}-01`,
+      dateTo: `${formattedYear}-${formattedMonth}-${formattedDay}`,
+    };
+  }
+
+  throw new Error(`Unsupported report type: ${type}`);
+}
+
 module.exports = {
   getTodayInIST,
   isValidDateString,
   isFutureDateIST,
   formatDateOnly,
+  getReportDateRange,
 };

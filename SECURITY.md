@@ -166,6 +166,12 @@ Sweety employs the **Double Submit Cookie pattern** combined with custom header 
 - Non-numeric strings, negative IDs, zero, and out-of-range integers immediately return `404 Not Found`, eliminating database syntax errors (`22P02`), range errors (`22003`), and unhandled 500 exceptions.
 - `errorHandler.js` defensively captures `22P02`, `22008`, and `22003` error codes, mapping them to HTTP 400 to prevent internal database queries or stack traces from ever leaking.
 
+### 8.5 Reports & Analytics Multi-Tenant Boundary & Arithmetic Safety (Phase 3)
+- Aggregation queries in `GET /api/reports` are strictly scoped by `WHERE user_id = $1 AND date >= $2 AND date <= $3` using parameterized values. Neither metrics (`COUNT`, `MAX`, `MIN`, `AVG`) nor detailed circadian slot records leak cross-tenant patient records.
+- Input validation via `queryReportSchema` strictly checks `type` against permitted enums (`daily`, `month_to_date`, `monthly`) and validates `date` against genuine calendar dates using `isValidDateString` to prevent SQL datetime overflow (`22008`).
+- Express prototype getters on `req.query` are shadowed safely via `Object.defineProperty`, ensuring schema defaults (e.g. today in IST) bind cleanly without runtime exceptions.
+- Zero-reading timeframes safely return `count: 0, highest: null, lowest: null, average: null, readings: []`, preventing division-by-zero crashes or `NaN` metric serialization.
+
 ---
 
 ## 9. Modular Phase 1 Security Deep Dives

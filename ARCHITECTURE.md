@@ -26,8 +26,9 @@ Sweety is engineered as a decoupled modern full-stack application following a la
 │  └──────────────────────────┬───────────────────────┘  │
 │                             │                          │
 │  ┌──────────────────────────▼───────────────────────┐  │
-│  │ Controllers: authController, readingsController  │  │
-│  │ (Argon2id hashing, Token rotation, Business rule)│  │
+│  │ Controllers: authController, readingsController, │  │
+│  │              reportsController                   │  │
+│  │ (Argon2id hashing, Token rotation, Analytics)    │  │
 │  └──────────────────────────┬───────────────────────┘  │
 │                             │                          │
 │  ┌──────────────────────────▼───────────────────────┐  │
@@ -65,7 +66,8 @@ server/
 │   │   └── env.js                # Environment variable validation and defaults
 │   ├── controllers/
 │   │   ├── authController.js     # Auth actions: register, login, refresh, logout, me
-│   │   └── readingsController.js # Readings CRUD: add, get daily/paginated, edit, delete
+│   │   ├── readingsController.js # Readings CRUD: add, get daily/paginated, edit, delete
+│   │   └── reportsController.js  # Glycemic reports: daily, month-to-date, monthly
 │   ├── db/
 │   │   ├── migrate.js            # Migration execution runner
 │   │   ├── schema.sql            # Canonical PostgreSQL schema DDL (users, tokens, readings)
@@ -75,16 +77,18 @@ server/
 │   │   ├── csrf.js               # Double-submit cookie CSRF protection
 │   │   ├── errorHandler.js       # Production-hardened error response middleware
 │   │   ├── rateLimiter.js        # Endpoint-specific rate limiting
-│   │   └── validate.js           # Zod boundary validator
+│   │   └── validate.js           # Zod boundary validator with prototype getter shadowing
 │   ├── routes/
 │   │   ├── authRoutes.js         # /api/auth endpoints mapping
-│   │   └── readingsRoutes.js     # /api/readings endpoints mapping
+│   │   ├── readingsRoutes.js     # /api/readings endpoints mapping
+│   │   └── reportsRoutes.js      # /api/reports endpoints mapping
 │   ├── utils/
-│   │   ├── date.js               # Indian Standard Time (Asia/Kolkata) date helpers
+│   │   ├── date.js               # Indian Standard Time (Asia/Kolkata) date helpers & range math
 │   │   └── security.js           # Argon2id hashing, JWT signing/verifying, crypto tokens
 │   ├── validators/
 │   │   ├── authValidator.js      # Zod schemas for register and login
-│   │   └── readingValidator.js   # Zod schemas for readings CRUD & query
+│   │   ├── readingValidator.js   # Zod schemas for readings CRUD & query
+│   │   └── reportValidator.js    # Zod schema for reports query parameters
 │   ├── app.js                    # Express app setup and middleware configuration
 │   └── server.js                 # Process bootstrapper and listener
 ├── tests/
@@ -93,6 +97,7 @@ server/
 │   ├── migration.test.js         # Schema migration verification test
 │   ├── readingValidator.test.js  # Zod schema & date unit tests
 │   ├── readings.test.js          # Readings CRUD & IDOR integration test suite
+│   ├── reports.test.js           # Reports API integration & edge case test suite
 │   ├── seed.test.js              # Database seeder test
 │   └── security.test.js          # Crypto and security utilities test
 ├── .env.example
@@ -118,6 +123,12 @@ server/
 ### 3.3 Database Layer
 - Managed by `pg.Pool` with pooling parameters configured for connection stability.
 - Schemas use standard PostgreSQL data types and constraints to enforce data integrity at the lowest layer.
+
+### 3.4 Reports & Analytics Layer (Phase 3)
+- Calculates time-boundary ranges (Daily, Month-to-Date, Monthly) via deterministic UTC calendar arithmetic.
+- Performs aggregate calculations directly in SQL (`COUNT(*)`, `MAX(value)`, `MIN(value)`, `AVG(value)`) scoped by multi-tenant user ID (`WHERE user_id = $1 AND date >= $2 AND date <= $3`).
+- Handles 0-reading datasets without division-by-zero crashes, returning null metrics and an empty list.
+- Formats daily readings in strict circadian meal slot order (`morning_fasting` → `after_breakfast` → `after_lunch` → `after_dinner`).
 
 ---
 

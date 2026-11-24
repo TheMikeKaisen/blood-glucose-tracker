@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const env = require('./config/env');
 const authRoutes = require('./routes/authRoutes');
 const readingsRoutes = require('./routes/readingsRoutes');
+const reportsRoutes = require('./routes/reportsRoutes');
 const { csrfProtection } = require('./middleware/csrf');
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -38,6 +39,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/readings', readingsRoutes);
+app.use('/api/reports', reportsRoutes);
 
 app.use(errorHandler);
 

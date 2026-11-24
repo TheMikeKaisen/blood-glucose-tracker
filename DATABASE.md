@@ -132,6 +132,10 @@ CREATE INDEX IF NOT EXISTS idx_readings_user_pagination ON readings (user_id, da
 - **`CHECK (value >= 40 AND value <= 600)`**: Database-level check constraint defending against physiological impossibilities.
 - **`ON DELETE CASCADE`**: Automatically purges readings when a user account is deleted.
 
+#### Index Optimization for Reports & Analytics
+- **`idx_readings_user_date` (`user_id, date`)**: Perfectly satisfies both equality and range predicates executed by `GET /api/reports` (`WHERE user_id = $1 AND date >= $2 AND date <= $3`). PostgreSQL leverages B-tree index range scans directly filtering by user before evaluating aggregate functions (`COUNT`, `MAX`, `MIN`, `AVG`), preventing full-table sequential scans.
+- **`idx_readings_user_pagination` (`user_id, date DESC, slot ASC`)**: Optimizes paginated history queries and chronological order sorting.
+
 ---
 
 ## 3. Migration Runner

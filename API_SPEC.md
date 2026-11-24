@@ -349,3 +349,117 @@ Mutating endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) require the `X-CSRF-Token`
 - **Error Responses:**
   - `401 Unauthorized`: `{"error": "Authentication required"}`
   - `404 Not Found`: `{"error": "Reading not found"}`
+
+---
+
+## 4. Reports & Analytics Endpoints (Phase 3)
+
+### 4.1 Get Report
+- **Method / Path:** `GET /api/reports`
+- **Cookies Required:** `accessToken`
+- **Query Parameters:**
+  - `type` (required): enum `daily`, `month_to_date`, or `monthly`.
+  - `date` (optional): `YYYY-MM-DD` calendar date string. Defaults to today's date in Indian Standard Time (`Asia/Kolkata`, UTC+5:30) if omitted or blank.
+- **Timeframe Semantics:**
+  1. `daily`: Selected date (`dateFrom = selectedDate`, `dateTo = selectedDate`). Returns summary statistics and detailed list of readings sorted in chronological circadian order (`morning_fasting` → `after_breakfast` → `after_lunch` → `after_dinner`).
+  2. `month_to_date`: 1st day of the selected date's month to the selected date (e.g., `2026-10-01` to `2026-10-15`). `readings` is an empty array `[]`.
+  3. `monthly`: Whole previous calendar month (e.g., `2026-10-15` evaluates to `2026-09-01` to `2026-09-30`). Correctly handles leap years (`2024-02-01` to `2024-02-29`) and year transitions (`2026-01-10` evaluates to `2025-12-01` to `2025-12-31`). `readings` is an empty array `[]`.
+- **Success Response (Daily Report - `200 OK`):**
+  ```json
+  {
+    "type": "daily",
+    "selectedDate": "2026-10-15",
+    "dateFrom": "2026-10-15",
+    "dateTo": "2026-10-15",
+    "stats": {
+      "count": 3,
+      "highest": 210,
+      "lowest": 95,
+      "average": 148.3
+    },
+    "readings": [
+      {
+        "id": "1",
+        "userId": "1",
+        "date": "2026-10-15",
+        "slot": "morning_fasting",
+        "value": 95,
+        "createdAt": "2026-10-15T02:30:00.000Z",
+        "updatedAt": "2026-10-15T02:30:00.000Z"
+      },
+      {
+        "id": "2",
+        "userId": "1",
+        "date": "2026-10-15",
+        "slot": "after_lunch",
+        "value": 140,
+        "createdAt": "2026-10-15T07:30:00.000Z",
+        "updatedAt": "2026-10-15T07:30:00.000Z"
+      },
+      {
+        "id": "3",
+        "userId": "1",
+        "date": "2026-10-15",
+        "slot": "after_dinner",
+        "value": 210,
+        "createdAt": "2026-10-15T15:00:00.000Z",
+        "updatedAt": "2026-10-15T15:00:00.000Z"
+      }
+    ]
+  }
+  ```
+- **Success Response (Month-to-Date Report - `200 OK`):**
+  ```json
+  {
+    "type": "month_to_date",
+    "selectedDate": "2026-10-15",
+    "dateFrom": "2026-10-01",
+    "dateTo": "2026-10-15",
+    "stats": {
+      "count": 12,
+      "highest": 220,
+      "lowest": 85,
+      "average": 134.2
+    },
+    "readings": []
+  }
+  ```
+- **Success Response (Monthly Report - `200 OK`):**
+  ```json
+  {
+    "type": "monthly",
+    "selectedDate": "2026-10-15",
+    "dateFrom": "2026-09-01",
+    "dateTo": "2026-09-30",
+    "stats": {
+      "count": 48,
+      "highest": 240,
+      "lowest": 80,
+      "average": 138.6
+    },
+    "readings": []
+  }
+  ```
+- **Success Response (Empty State - `200 OK`):**
+  ```json
+  {
+    "type": "daily",
+    "selectedDate": "2026-05-15",
+    "dateFrom": "2026-05-15",
+    "dateTo": "2026-05-15",
+    "stats": {
+      "count": 0,
+      "highest": null,
+      "lowest": null,
+      "average": null
+    },
+    "readings": []
+  }
+  ```
+- **Error Responses:**
+  - `401 Unauthorized`: `{"error": "Authentication required"}`
+  - `422 Unprocessable Entity`:
+    - Missing type: `{"error": "Report type must be one of: daily, month_to_date, monthly"}`
+    - Invalid type: `{"error": "Report type must be one of: daily, month_to_date, monthly"}`
+    - Invalid date format: `{"error": "Please provide a valid date in YYYY-MM-DD format."}`
+

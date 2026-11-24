@@ -206,3 +206,39 @@ This document records the architectural and technical decisions made for the Swe
 - **Consequences:**
   - Robust handling of cleared form inputs and invalid calendar dates.
   - Perfect verbatim parity with clinical validation rules in `Assignment.md`.
+
+---
+
+## ADR-019: Deterministic Report Calendar Math, Hybrid SQL Aggregation, and Prototype Getter Shadowing
+
+- **Status:** Accepted
+- **Context:** The reporting requirements mandate three report timeframes:
+  1. `daily`: lists all readings in chronological circadian order (`morning_fasting` → `after_breakfast` → `after_lunch` → `after_dinner`) alongside summary statistics.
+  2. `month_to_date`: aggregates from the 1st day of the selected date's month to the selected date.
+  3. `monthly`: aggregates the whole previous calendar month.
+  
+  This introduced several technical challenges:
+  - Previous month calculations must deterministically handle leap years (February 29 in 2024 vs February 28 in 2025) and year boundaries (January rolling back to December of the previous year).
+  - Division by zero and NaN errors when aggregating 0 readings (`count === 0`).
+  - In Express, `req.query` is configured with a prototype getter (`defineGetter(req, 'query', ...)`), causing direct assignment (`req[source] = parsed`) in validation middleware to silently fail or fail to mutate `req.query`, preventing Zod default date values from attaching.
+  - SQL aggregate dialects: While PostgreSQL supports `ROUND(AVG(value)::numeric, 1)`, mock environments like `pg-mem` lack two-argument `round(float, integer)` implementations, causing test failures.
+- **Decision:**
+  1. **Deterministic Calendar Range Calculation:** Implement `getReportDateRange(type, dateStr)` using UTC date math (`new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate()`), providing mathematically exact boundary resolution without timezone offset shifts.
+  2. **Multi-Tenant Parameterized Aggregation:** Execute a single aggregation query strictly scoped by user ID:
+     ```sql
+     SELECT 
+       COUNT(*)::int AS count,
+       MAX(value)::int AS highest,
+       MIN(value)::int AS lowest,
+       AVG(value)::float AS average
+     FROM readings
+     WHERE user_id = $1 AND date >= $2 AND date <= $3;
+     ```
+  3. **Arithmetic Rounding & Empty State Parity:** Round `average` in the controller using standard arithmetic rounding to 1 decimal place (`Math.round(val * 10) / 10`). When `count === 0`, return `stats: { count: 0, highest: null, lowest: null, average: null }, readings: []` without division-by-zero crashes.
+  4. **Circadian Slot Ordering:** Daily slot readings are ordered chronologically via SQL `CASE slot WHEN 'morning_fasting' THEN 1 WHEN 'after_breakfast' THEN 2 WHEN 'after_lunch' THEN 3 WHEN 'after_dinner' THEN 4 ELSE 5 END ASC`.
+  5. **Validation Middleware Getter Shadowing:** Update `validate(schema, source)` to use `Object.defineProperty(req, source, { value: parsed, writable: true, configurable: true, enumerable: true })`, cleanly shadowing Express prototype getters and ensuring transformed/defaulted Zod outputs are accessible on `req.query`.
+- **Consequences:**
+  - Guaranteed boundary correctness across all calendar edge cases (leap years, year rollovers).
+  - 100% dialect portability across local PostgreSQL Docker containers, Supabase, and test mock engines (`pg-mem`).
+  - Robust multi-tenant IDOR protection and complete parity with clinical reporting specifications.
+
