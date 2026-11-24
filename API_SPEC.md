@@ -463,3 +463,24 @@ Mutating endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) require the `X-CSRF-Token`
     - Invalid type: `{"error": "Report type must be one of: daily, month_to_date, monthly"}`
     - Invalid date format: `{"error": "Please provide a valid date in YYYY-MM-DD format."}`
 
+---
+
+## 5. Frontend API Client Contract (`client/src/services/api.ts`)
+
+The React client encapsulates all backend communication through a centralized, typed `ApiService` singleton:
+
+### 5.1 Request Conventions
+- **Credentials:** All calls pass `credentials: 'include'` (equivalent to Axios `withCredentials: true`), transmitting the httpOnly `accessToken`, `refreshToken`, and `csrfToken` cookies.
+- **CSRF Headers:** State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) automatically attach `X-CSRF-Token: <token>`. The token is lazily fetched via `GET /api/auth/csrf` or extracted from responses.
+- **Single-Flight Refresh Mutex:** When a 401 Unauthorized status is returned on any API request, the request is intercepted. If a refresh is already in-flight, it waits for that promise; otherwise, exactly one `POST /api/auth/refresh` request is initiated. When the refresh resolves, all waiting requests retry automatically. If refresh fails, `onUnauthorized` clears user session state.
+
+### 5.2 Client-Side Error Translation & Validation Parity
+| Scenario | Error String Emitted in UI |
+|---|---|
+| Empty glucose value | `"Please enter a glucose value."` |
+| Value out of range (< 40 or > 600) | `"Value must be between 40 and 600 mg/dl."` |
+| Future date selected | `"Date cannot be in the future."` |
+| Duplicate slot for date | `"You already have an {Slot Name} reading for this date."` |
+| Daily limit exceeded (>= 4) | `"You can add only 4 readings per day."` |
+
+

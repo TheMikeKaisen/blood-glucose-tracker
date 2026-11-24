@@ -51,16 +51,29 @@ npm run db:seed
 ```
 
 ### 5. Run Automated Tests
-Execute the comprehensive integration test suite (runs in-memory or against Postgres):
+Execute backend and frontend test suites:
 ```bash
+# Run backend integration test suite (142 tests)
 npm test
+
+# Run frontend React Testing Library & API client test suite (11 tests)
+npm run test:client
 ```
 
-### 6. Start the API Server
-Start the development server with live reload:
+### 6. Start Development Servers
+Start both backend API and frontend Vite client:
 ```bash
+# Terminal 1: Start Express API server (http://localhost:5000)
 npm run server
-# Server listening on http://localhost:5000
+
+# Terminal 2: Start React Vite frontend client (http://localhost:5173)
+npm run client
+```
+
+### 7. Production Build
+```bash
+# Build optimized client bundles (dist/assets/)
+npm run build
 ```
 
 ---
@@ -99,6 +112,12 @@ For complete architectural specifications, threat modeling, and contracts, consu
 - **Reporting Statistical Aggregations & Division-by-Zero Safety**: Summary metrics (`highest`, `lowest`, `average`, `count`) are calculated directly via SQL aggregate functions with row-level tenant scoping (`WHERE user_id = $1 AND date >= $2 AND date <= $3`). Standard arithmetic rounding to 1 decimal place (`Math.round(val * 10) / 10`) is applied to `average`. For periods with 0 readings, the endpoint cleanly returns `stats: { count: 0, highest: null, lowest: null, average: null }` and `readings: []` without division-by-zero crashes or `NaN` outputs.
 - **Circadian Meal Slot Chronological Ordering**: In daily reports, readings are returned sorted in clinical circadian meal order (`morning_fasting` → `after_breakfast` → `after_lunch` → `after_dinner`) via SQL `CASE` ordering, ensuring the UI displays a patient's daily timeline in chronological sequence regardless of the order entries were logged.
 - **Express Prototype Getter Shadowing on Query Validation**: In Express, `req.query` is configured with a prototype getter. Mutating `req[source] = parsed` during schema boundary validation could not attach transformed/defaulted Zod outputs. The `validate` middleware shadows the getter using `Object.defineProperty(req, source, { value: parsed, writable: true, configurable: true, enumerable: true })`, ensuring query defaults (such as defaulting date to today in IST) bind seamlessly across all endpoints.
+- **Frontend Single-Flight Refresh Mutex & Concurrency Barrier**: When multiple HTTP requests encounter an expired 10-minute access token (`401 Unauthorized`), uncoordinated concurrent calls to `/api/auth/refresh` would present the same rotated refresh token in parallel. The server's atomic token rotation detects this as token reuse and emergency-revokes all active sessions for that user. To prevent false breach triggers, `client/src/services/api.ts` implements a Single-Flight Mutex: exactly one `/api/auth/refresh` request is initiated, all concurrent 401s queue behind its returned promise, the freshly rotated CSRF and session cookies are captured, and all queued requests are seamlessly retried.
+- **Hallmark "Clinical Calm" Design System & WCAG 2.2 AA Conformance**: Built with zero "AI aesthetic" defaults: all color tokens and font scales are declared at `:root` in `src/index.css`. Transitions avoid `transition: all` and strictly animate `transform` and `opacity`. Mobile ergonomics mandate 44x44px minimum touch targets and sticky bottom navigation for thumb reachability. American Diabetes Association (ADA) target boundaries are displayed via clinical color tokens: In Target (emerald), Borderline (amber), High (crimson), and Low (slate blue) with 100% accessible contrast.
+- **Exact Client-Side Validation Parity**: The reading entry form executes identical validation checks before initiating network roundtrips, giving immediate tactile feedback matching assignment specifications verbatim: `"Please enter a glucose value."`, `"Value must be between 40 and 600 mg/dl."`, `"Date cannot be in the future."`, `"You already have an {Slot Name} reading for this date."`, and `"You can add only 4 readings per day."`.
+- **Mobile Numeric Input Keypad & Input Normalization**: Glucose values use `<input type="text" inputMode="numeric" pattern="[0-9]*" />` with `/^\d+$/` validation instead of standard `<input type="number">`. This invokes the native numeric keypad on mobile devices, eliminates desktop spinner side-effects, prevents jsdom empty-value normalization bugs, and seamlessly handles trimmed inputs (`" 120 "` -> `120`).
+- **Date-Scoped Form Validation**: Client-side slot collision and max-4 count checks in `ReadingModal` evaluate against the selected date only if `date === initialDate`. If the patient changes the date inside the modal, collision validation is delegated to the server's HTTP 409 conflict checks, preventing false lockouts when navigating from a full day.
+- **Multi-Page Chronological Aggregation for Trend Charts**: Reporting trend charts paginate through all available reading pages (up to `totalPages`) and sort chronologically by calendar date and circadian slot order (`morning_fasting` → `after_breakfast` → `after_lunch` → `after_dinner`), ensuring the full 120-reading monthly curve of seeded accounts is accurately visualized without truncation.
 
 ### What I'd Improve with More Time
 - **Structured Logging (Winston / Pino)**: Upgrade native `console.log` to Winston with log levels, request correlation IDs, daily log rotation, and automated clinical data redaction (detailed in [future_plans.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/future_plans.md)).

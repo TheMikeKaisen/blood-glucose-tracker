@@ -174,7 +174,32 @@ Sweety employs the **Double Submit Cookie pattern** combined with custom header 
 
 ---
 
-## 9. Modular Phase 1 Security Deep Dives
+## 9. Frontend Security & Single-Flight Mutex Concurrency Barrier (Phase 4)
+
+### 9.1 Zero Token Storage in LocalStorage / SessionStorage
+- All JWT access tokens and opaque refresh tokens reside strictly in `httpOnly`, `Secure` (in production), `SameSite=Lax` browser cookies.
+- Frontend JavaScript has zero direct access to session tokens, neutralizing Cross-Site Scripting (XSS) credential theft.
+
+### 9.2 Double-Submit CSRF Integration
+- State-changing API mutations (`POST`, `PUT`, `PATCH`, `DELETE`) automatically query and attach the issued `csrfToken` via the `X-CSRF-Token` HTTP header in `client/src/services/api.ts`.
+- Requests automatically read the token from cookies or fetch it from `/api/auth/csrf` on application bootstrap.
+
+### 9.3 Single-Flight Refresh Mutex & False Breach Defense
+- The server employs Refresh Token Reuse Detection: presenting a revoked refresh token immediately revokes all active sessions for that user.
+- If a user opens multiple dashboard widgets or parallel queries fire simultaneously when the 10-minute access token expires, uncoordinated refresh requests would attempt to rotate the same refresh token in parallel, triggering the server's compromise detection and destroying the user's active session.
+- `client/src/services/api.ts` resolves this via an in-flight `refreshPromise` barrier:
+  1. The first 401 response initiates `POST /api/auth/refresh`.
+  2. All concurrent requests wait on that exact same Promise.
+  3. When refresh succeeds, the rotated CSRF token is saved, and all waiting requests are retried.
+  4. If refresh fails, `onUnauthorized` triggers, cleanly clearing user state.
+
+### 9.4 Exact Client-Side Validation Parity
+- All inputs are strictly checked prior to network requests to prevent invalid database roundtrips and avoid leaking backend internal state.
+- Form controls enforce `noValidate` to avoid standard browser tooltip divergence, reliably presenting exact assignment error messages.
+
+---
+
+## 10. Modular Phase 1 Security Deep Dives
 
 For exhaustive cryptographic analysis, attack surface breakdowns, code walkthroughs, and interview Q&As, refer to the following documentation files:
 - [working/README.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/README.md) – Phase 1 Master Security & Architecture Overview

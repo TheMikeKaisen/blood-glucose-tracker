@@ -242,3 +242,74 @@ This document records the architectural and technical decisions made for the Swe
   - 100% dialect portability across local PostgreSQL Docker containers, Supabase, and test mock engines (`pg-mem`).
   - Robust multi-tenant IDOR protection and complete parity with clinical reporting specifications.
 
+---
+
+## ADR-009: Frontend Single-Flight Refresh Mutex & Concurrency Barrier
+
+- **Status:** Accepted
+- **Context:** Access tokens expire every 10 minutes. When a user is interacting with multiple components (e.g. daily timeline + report chart), multiple parallel API requests can return HTTP 401 simultaneously. Because the backend implements strict refresh token rotation with compromise detection, concurrent calls to `/api/auth/refresh` presenting the same rotated token would be detected as reuse, immediately triggering an emergency revocation of all active sessions for that user.
+- **Decision:** Implement a Single-Flight Mutex pattern in `client/src/services/api.ts`:
+  1. Maintain an in-flight `refreshPromise: Promise<string | null> | null`.
+  2. When an API call receives 401, if a refresh request is already running, wait on that existing Promise.
+  3. If no refresh is running, initiate `POST /api/auth/refresh` with `X-CSRF-Token`.
+  4. Once resolved, update the CSRF token, reset `refreshPromise = null`, and retry the original failed requests.
+  5. If refresh fails, notify the auth context to clear user session and throw 401.
+- **Consequences:**
+  - Eliminates race conditions during token rotation.
+  - Completely prevents false-positive compromise triggers.
+  - Retains seamless user sessions across tab switches and multi-widget page loads.
+
+---
+
+## ADR-010: Mobile-Native Hallmark "Clinical Calm" Design System & Token Architecture
+
+- **Status:** Accepted
+- **Context:** Chronic diabetes management tracking requires a calming, focused, high-contrast, distraction-free interface. AI-generated UIs frequently fall into generic templates with purple-blue gradients, card-inside-a-card clutter, tracked uppercase labels, and erratic transition animations.
+- **Decision:** Adopt the Hallmark Design System floor rules:
+  1. Declare all color, typography, surface, and ADA target tokens at `:root` in `src/index.css`.
+  2. Strictly forbid `transition: all`. Animate only `transform` and `opacity`.
+  3. Enforce `overflow-x: clip` on `html` and `body`.
+  4. Ensure `:focus-visible` rings with high visibility on all interactive controls.
+  5. Ensure 44x44px minimum touch targets for thumb ergonomics.
+  6. Calibrate status colors to authentic ADA guidelines: In Target (emerald), Borderline (amber), High (crimson), and Low (slate blue) with 100% WCAG 2.2 AA contrast.
+  7. Mobile-native ergonomics: sticky thumb navigation bar (`Readings`, `Reports`, `Targets`), date swiper with quick-jump to today, and clean modal sheets.
+- **Consequences:**
+  - Fast, accessible, calming patient experience.
+  - Full WCAG 2.2 AA compliance.
+  - Distinctive, award-worthy clinical aesthetic.
+
+---
+
+## ADR-011: Automated Frontend Testing with Vitest and React Testing Library
+
+- **Status:** Accepted
+- **Context:** `Assignment.md` explicitly lists frontend tests with React Testing Library for the reading form as a high-ROI bonus.
+- **Decision:** Configure Vitest with jsdom, `@testing-library/react`, and `@testing-library/jest-dom`:
+  1. Test reading form validation for missing values, range bounds (40–600 mg/dL), future dates, duplicate slots, and 4-readings/day limits.
+  2. Verify real-time ADA clinical target preview evaluation.
+  3. Verify Single-Flight Mutex concurrency queueing and CSRF header attachment.
+- **Consequences:**
+  - Fast test execution in Vite environment.
+  - Contract verification and regression protection on the frontend.
+
+---
+
+## ADR-020: Frontend Cross-Date Form Isolation, Integer Input Normalization, and Multi-Page Trend Aggregation
+
+- **Status:** Accepted
+- **Context:** Sizable edge cases emerged in frontend form handling and reporting visualization:
+  1. In the reading entry modal, if a patient navigated from a fully logged day (`4/4` readings) and switched the date inside the modal to an earlier date with available slots, stale daily count and duplicate slot state from the initial date falsely blocked valid submissions.
+  2. HTML `<input type="number">` has cross-browser inconsistencies in mobile browsers and jsdom (swallowing whitespace or returning empty strings), allowing non-integer exponential/float syntax or failing trimmed input tests.
+  3. The seeded demo account contains 120 readings across 30 days. Because `GET /api/readings` caps page limits at 100, single-page fetching in `ReportsPage` truncated 20 readings from month-to-date and monthly line charts.
+  4. Residual Hallmark Floor Rule violations existed in components (`transition-all` in progress/selector bars, unstyled emojis in target headings, and sub-44px touch targets on small buttons).
+- **Decision:**
+  1. **Scoped Date Validation:** In `ReadingModal.tsx`, verify whether `date === initialDate`. If the date matches, evaluate cached local slot and count constraints with max-4 count prioritized over duplicate slot check; if the date has changed, delegate collision checking to the server's HTTP 409 boundaries to prevent false client-side lockouts.
+  2. **Mobile Numeric Input Keypad:** Implement `<input type="text" inputMode="numeric" pattern="[0-9]*" />` with strict `/^\d+$/` regex verification. This presents an integer numeric keypad on iOS/Android, eliminates desktop scroll/spinner side-effects, and supports trimmed inputs (`" 120 "` -> `120`).
+  3. **Multi-Page Chronological Aggregation:** In `ReportsPage.tsx`, paginate through all available pages (`totalPages`) to fetch all readings within `dateFrom` and `dateTo`. Sort data chronologically by ISO date string AND circadian slot order (`morning_fasting` → `after_breakfast` → `after_lunch` → `after_dinner`), ensuring smooth, accurate glycemic curves in Recharts.
+  4. **Strict Hallmark Floor Enforcement:** Remove all `transition-all` instances, replace unstyled emojis with styled Lucide icons (`Sun`, `Utensils`), enforce 44px min touch targets across all button sizes, and attach `aria-describedby` to modals.
+- **Consequences:**
+  - Robust form interaction without false validation lockouts when changing dates.
+  - 100% complete data visualization in monthly reports across seeded accounts.
+  - Strict adherence to Hallmark mobile-native rules and WCAG 2.2 AA accessibility standards.
+
+

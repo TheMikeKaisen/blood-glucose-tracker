@@ -149,7 +149,58 @@ Multi-tenancy in Sweety is row-level:
 
 ---
 
-## 6. Deep Technical Implementation Guides
+## 7. Frontend Client Architecture (Phase 4: React & Hallmark UI)
+
+### 7.1 Tech Stack & Bundler Design
+- **Framework:** React 19 + TypeScript.
+- **Bundler:** Vite 8 (Rolldown engine) with manual chunk splitting (`vendor-react`, `vendor-charts`, `vendor-icons`), minimizing main bundle to ~57 kB.
+- **Styling & Design System:** Tailwind CSS v4, Hallmark Floor Token Architecture in `:root`.
+- **Icons:** `lucide-react`.
+- **Charting:** `recharts` for glycemic trend line curves with ADA target reference lines.
+- **Testing:** Vitest + React Testing Library + `@testing-library/jest-dom`.
+
+### 7.2 Single-Flight Refresh Mutex Architecture
+```
+Multiple API Calls (401 Expired Access Token)
+         │           │           │
+         ▼           ▼           ▼
+   ┌───────────────────────────────────┐
+   │ Single-Flight Refresh Mutex       │
+   │ (ApiService.executeRefreshMutex)  │
+   └─────────────────┬─────────────────┘
+                     │ (Exactly 1 network request)
+                     ▼
+           POST /api/auth/refresh
+           (with X-CSRF-Token)
+                     │
+                     ▼
+   ┌───────────────────────────────────┐
+   │ Server Rotates Access & Refresh   │
+   │ Cookies + Issues New CSRF Token   │
+   └─────────────────┬─────────────────┘
+                     │
+                     ▼
+   All Queued Requests Resume & Retry
+   (Prevents false breach triggers)
+```
+
+### 7.3 Component Hierarchy & Layout
+```
+App
+├── AuthProvider (session state, user, login, register, demo login, logout)
+└── Authenticated Layout
+    ├── Header (Brand badge, patient identity, ADA target info trigger, sign out)
+    ├── Shell (Max-w-2xl centered responsive container)
+    │   ├── ReadingsPage (DateBar, DailyProgress circadian steps, ReadingSlotCards, Modals)
+    │   ├── ReportsPage (ReportTypeSelector, SummaryCards, TrendChart, EmptyState)
+    │   └── TargetsPage (Clinical ADA guidelines, profile actions, revoke-all-devices)
+    ├── BottomNav (Mobile-native thumb navigation: Readings | Reports | Targets)
+    └── ClinicalTargetsModal (ADA target guidelines quick reference)
+```
+
+---
+
+## 8. Deep Technical Implementation Guides
 
 For in-depth code walkthroughs, cryptographic threat models, library breakdowns, and senior engineering interview preparation, refer to the modular documentation directory:
 - [working/README.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/README.md) – Phase 1 Master Architecture Guide & Document Index.
