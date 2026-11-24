@@ -1,0 +1,21 @@
+{
+  "name": "blood-glucose-tracker",
+  "version": "1.0.0",
+  "description": "Sweety – Blood Glucose Tracker (MERN + PostgreSQL)",
+  "scripts": {
+    "test": "npm --prefix server test",
+    "server": "npm --prefix server run dev",
+    "start": "npm --prefix server start",
+    "db:migrate": "npm --prefix server run db:migrate",
+    "db:seed": "npm --prefix server run db:seed"
+  },
+  "keywords": [
+    "glucose-tracker",
+    "diabetes",
+    "healthcare",
+    "express",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "ISC"
+}

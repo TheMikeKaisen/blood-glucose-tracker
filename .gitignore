@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Environment Variables
+.env
+server/.env
+client/.env
+*.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Private agent notes
+/.agents
+sweety-phase-plan.md
+Assignment.md
+/docs
+/DeveloperNotes

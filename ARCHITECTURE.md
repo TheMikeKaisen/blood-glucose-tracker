@@ -1,0 +1,131 @@
+# 🏛️ Sweety – System Architecture Specification
+
+This document details the software architecture, component boundaries, data flow, and structural patterns for the **Sweety – Blood Glucose Tracker** application.
+
+---
+
+## 1. High-Level Architecture
+
+Sweety is engineered as a decoupled modern full-stack application following a layered Model-View-Controller (MVC) architecture on the backend, communicating with a single-page React client over a hardened REST API, backed by a relational PostgreSQL database.
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   React Client (Vite)                  │
+│       (AuthContext, ReadingsPage, ReportsPage)         │
+└───────────────────────────┬────────────────────────────┘
+                            │
+               HTTPS / Cookies (httpOnly)
+             + CSRF Header (X-CSRF-Token)
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│                    Express REST API                    │
+│                                                        │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Middlewares: Helmet, CORS, CookieParser, CSRF,   │  │
+│  │ RateLimiter, BodyLimit, Zod Validator, Auth      │  │
+│  └──────────────────────────┬───────────────────────┘  │
+│                             │                          │
+│  ┌──────────────────────────▼───────────────────────┐  │
+│  │ Controllers: authController, readingsController  │  │
+│  │ (Argon2id hashing, Token rotation, Business rule)│  │
+│  └──────────────────────────┬───────────────────────┘  │
+│                             │                          │
+│  ┌──────────────────────────▼───────────────────────┐  │
+│  │ Database Layer: pg.Pool connection singleton     │  │
+│  │ Parameterized SQL queries ($1, $2, ...)          │  │
+│  └──────────────────────────┬───────────────────────┘  │
+└─────────────────────────────┼──────────────────────────┘
+                              │
+                    TCP (Connection Pool)
+                              │
+┌─────────────────────────────▼──────────────────────────┐
+│                   PostgreSQL Database                  │
+│     (Docker Container locally / Supabase in Cloud)     │
+│       - users (BIGINT IDENTITY, UNIQUE email)          │
+│       - refresh_tokens (token_hash, rotation, reuse)   │
+│       - readings (user_id, date, slot, value, UNIQUE)  │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Server Scaffolding & Separation of Concerns
+
+### 2.1 Separation of `app.js` and `server.js`
+To ensure lightning-fast, port-free automated testing:
+- **`src/app.js`**: Instantiates and configures Express, mounts middlewares, attaches routes, and attaches the global error handler. It does **not** bind to a network port (`listen()`). This allows Supertest to execute in-memory HTTP integration tests in parallel without port collision.
+- **`src/server.js`**: The runtime process entry point. It imports `app`, checks database connectivity, and starts listening on `PORT` (default 5000).
+
+### 2.2 Directory Structure
+```
+server/
+├── src/
+│   ├── config/
+│   │   ├── db.js             # pg.Pool singleton and database query interface
+│   │   └── env.js            # Environment variable validation and defaults
+│   ├── controllers/
+│   │   └── authController.js # Auth actions: register, login, refresh, logout, me
+│   ├── db/
+│   │   ├── migrate.js        # Migration execution runner
+│   │   ├── schema.sql        # Canonical PostgreSQL schema DDL
+│   │   └── seed.js           # 30-day realistic clinical dataset seeder
+│   ├── middleware/
+│   │   ├── auth.js           # JWT verification & req.user attachment
+│   │   ├── csrf.js           # Double-submit cookie CSRF protection
+│   │   ├── errorHandler.js   # Production-hardened error response middleware
+│   │   ├── rateLimiter.js    # Endpoint-specific rate limiting
+│   │   └── validate.js       # Zod boundary validator
+│   ├── routes/
+│   │   └── authRoutes.js     # /api/auth endpoints mapping
+│   ├── utils/
+│   │   └── security.js       # Argon2id hashing, JWT signing/verifying, crypto tokens
+│   ├── validators/
+│   │   └── authValidator.js  # Zod schemas for register and login
+│   ├── app.js                # Express app setup and middleware configuration
+│   └── server.js             # Process bootstrapper and listener
+├── tests/
+│   ├── auth.test.js          # Auth API integration test suite
+│   ├── db.test.js            # Database configuration test
+│   ├── migration.test.js     # Schema migration verification test
+│   ├── seed.test.js          # Database seeder test
+│   └── security.test.js      # Crypto and security utilities test
+├── .env.example
+├── .gitignore
+├── docker-compose.yml        # Local PostgreSQL container service
+└── package.json
+```
+
+---
+
+## 3. Layer Responsibilities
+
+### 3.1 Routing & Validation Layer
+- Routes define HTTP methods and endpoint paths.
+- Every route passes requests through `validate(schema)` middleware before invoking controllers.
+- Validation failures are caught immediately at the HTTP boundary, returning RFC 7807 / standard error formats without reaching business logic.
+
+### 3.2 Controller Layer
+- Implements core business rules (e.g., duplicate checks, credential verification, token rotation).
+- Does not construct dynamic SQL strings.
+- Interacts with the database exclusively through parameterized queries.
+
+### 3.3 Database Layer
+- Managed by `pg.Pool` with pooling parameters configured for connection stability.
+- Schemas use standard PostgreSQL data types and constraints to enforce data integrity at the lowest layer.
+
+---
+
+## 4. Multi-Tenant Isolation & IDOR Protection
+
+Multi-tenancy in Sweety is row-level:
+- All patient glucose readings reference `users(id)` via `user_id BIGINT NOT NULL`.
+- Every SQL query performing reads, updates, or deletes incorporates `WHERE user_id = $1`.
+- IDOR vulnerabilities are prevented because reading IDs are never accessed without matching the requesting user's identity extracted from the verified JWT cookie.
+
+---
+
+## 5. Portability Strategy (Docker to Supabase)
+
+- Primary keys use `BIGINT GENERATED BY DEFAULT AS IDENTITY`, conforming to modern SQL standards and matching Supabase default schema conventions.
+- Timestamps use `TIMESTAMPTZ` with `DEFAULT CURRENT_TIMESTAMP`.
+- The application relies solely on standard PostgreSQL features. Switching from local Docker PostgreSQL to cloud Supabase requires changing only the `DATABASE_URL` environment variable.
