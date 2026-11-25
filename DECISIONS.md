@@ -312,4 +312,19 @@ This document records the architectural and technical decisions made for the Swe
   - 100% complete data visualization in monthly reports across seeded accounts.
   - Strict adherence to Hallmark mobile-native rules and WCAG 2.2 AA accessibility standards.
 
+---
+
+## ADR-021: Future One-Time Password (OTP) User Verification Architecture
+
+- **Status:** Proposed
+- **Context:** Currently, patient registration activates accounts immediately upon valid credential submission, and password resets lack out-of-band identity assurance. In a clinical healthcare environment, verifying patient identity via email or SMS prevents fake account creation, guarantees valid communication channels, and protects accounts against unauthorized takeovers.
+- **Decision:**
+  1. Add email and SMS One-Time Password (OTP) verification for user registration and password recovery workflows.
+  2. Plaintext 6-digit OTP codes will never be persisted in the database; only cryptographically salted SHA-256 hashes (`otp_hash`) with a short expiration TTL (3–5 minutes) will be stored in Redis or a dedicated verification table.
+  3. Strict rate limiting: Maximum 3 attempts per challenge, with IP and phone/email cooldowns to prevent SMS toll fraud and pumping attacks.
+  4. Upon successful OTP verification, issue a single-use signed verification ticket to complete registration or password update.
+- **Consequences:**
+  - Guarantees authentic patient identity before granting access to glycemic health records.
+  - Requires integration with external dispatch providers (e.g. SendGrid, Twilio, AWS SNS) and transient storage.
+
 

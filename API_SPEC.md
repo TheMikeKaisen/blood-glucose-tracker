@@ -483,4 +483,44 @@ The React client encapsulates all backend communication through a centralized, t
 | Duplicate slot for date | `"You already have an {Slot Name} reading for this date."` |
 | Daily limit exceeded (>= 4) | `"You can add only 4 readings per day."` |
 
+---
+
+## 6. Future Authentication Endpoints (Roadmap)
+
+### 6.1 Request Registration / Password Reset OTP
+- **Method / Path:** `POST /api/auth/otp/send`
+- **Rate Limit:** 3 requests / 15 minutes per IP and email/phone
+- **Headers:** `Content-Type: application/json`, `X-CSRF-Token: <token>`
+- **Request Body:**
+  ```json
+  {
+    "identifier": "patient@example.com",
+    "purpose": "registration"
+  }
+  ```
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "message": "Verification code dispatched successfully"
+  }
+  ```
+
+### 6.2 Verify OTP Challenge
+- **Method / Path:** `POST /api/auth/otp/verify`
+- **Headers:** `Content-Type: application/json`, `X-CSRF-Token: <token>`
+- **Request Body:**
+  ```json
+  {
+    "identifier": "patient@example.com",
+    "code": "123456",
+    "purpose": "registration"
+  }
+  ```
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "verificationToken": "eyJhbGciOiJIUzI1NiIs..."
+  }
+  ```
+
 

@@ -211,3 +211,28 @@ For exhaustive cryptographic analysis, attack surface breakdowns, code walkthrou
 - [working/phase1_database_and_models.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_database_and_models.md) – Database Security, Identity Columns & Multi-Tenant Isolation
 - [working/phase1_error_handling_and_validation.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_error_handling_and_validation.md) – Boundary Validation & Information Disclosure Prevention
 - [working/phase1_interview_qa.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_interview_qa.md) – Master Senior Backend & Security Interview Preparation
+
+---
+
+## 11. Future Security Roadmap & Hardening
+
+As part of ongoing clinical platform hardening, the following security enhancements are planned for subsequent phases:
+
+### 11.1 One-Time Password (OTP) User Verification
+- **Purpose:** Add email or SMS one-time password (OTP) verification for user registration and password resets to verify patient identity before activating accounts or restoring access.
+- **Threat Mitigations:**
+  - Defends against fraudulent registrations, fake email submissions, and unauthorized account takeovers.
+- **Architectural Security Controls:**
+  - **No Plaintext Persistence:** Store only cryptographically salted SHA-256 hashes (`otp_hash`) of 6-digit numeric codes with short TTLs (3–5 minutes) in Redis or a dedicated verification table.
+  - **Toll Fraud & Pumping Defense:** Rate limit dispatch endpoints per IP address and destination identifier (maximum 3 requests per 15 minutes).
+  - **Attempt Throttling:** Enforce a maximum of 3 invalid submission attempts before automatically invalidating the active challenge.
+  - **Single-Use Challenge Tokens:** Successful verification issues a short-lived, signed JWT verification token granting authorization to finalize registration or update passwords.
+
+### 11.2 Multi-Factor Authentication (MFA / TOTP)
+- Implement opt-in RFC 6238 Time-Based One-Time Passwords (TOTP) compatible with Google Authenticator and Apple Keychain for clinical accounts.
+
+### 11.3 Biometric Passkey Support (WebAuthn)
+- Introduce FIDO2 / WebAuthn passwordless authentication (TouchID, FaceID, Windows Hello) to eliminate credential-stuffing vectors.
+
+### 11.4 Distributed Rate Limiting (Redis)
+- Back rate limiting middleware with a Redis cluster to synchronize token buckets across horizontally scaled container instances.

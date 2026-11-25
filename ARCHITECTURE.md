@@ -212,3 +212,17 @@ For in-depth code walkthroughs, cryptographic threat models, library breakdowns,
 - [working/phase1_database_and_models.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_database_and_models.md) – Database Architecture & Multi-Tenant Design.
 - [working/phase1_error_handling_and_validation.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_error_handling_and_validation.md) – Validation & Centralized Error Handling.
 - [working/phase1_interview_qa.md](file:///c:/Users/computer/Downloads/blood-glucose-tracker/working/phase1_interview_qa.md) – Master Senior Backend & Security Interview Preparation.
+
+---
+
+## 9. Future Architectural Roadmap
+
+### 9.1 Identity Verification & One-Time Password (OTP) Pipeline
+- **OTP Verification Flow**: Introduce an asynchronous notification adapter interface (`EmailOtpService`, `SmsOtpService`) decoupled from the core auth controller. Registration will support a staged `unverified` status requiring 6-digit OTP verification before session tokens are minted.
+- **Challenge Token Abstraction**: Post-OTP validation issues a single-use JWT verification ticket (`purpose: 'verify_email' | 'reset_password'`) required to finalize state mutations.
+
+### 9.2 Background Queues (BullMQ / Redis)
+- Implement background queue workers for scheduled evening reminder notifications for patients logging fewer than 4 readings, and asynchronous out-of-band OTP email/SMS delivery.
+
+### 9.3 Clinician & Doctor Role-Based Access Control (RBAC)
+- Extend multi-tenancy to support clinician accounts with read-only authorization delegates for assigned patient glucose records and reports.
